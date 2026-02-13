@@ -115,17 +115,27 @@ jobs:
           7z a ../stm-$VERSION-$TARGET.zip *
           cd ..
 
-      - name: Generate SHA256 checksum
+      - name: Generate SHA256 checksum (Linux)
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: sha256sum stm-$VERSION-$TARGET.tar.gz > stm-$VERSION-$TARGET.sha256
+
+      - name: Generate SHA256 checksum (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: shasum -a 256 stm-$VERSION-$TARGET.tar.gz > stm-$VERSION-$TARGET.sha256
+
+      - name: Generate SHA256 checksum (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
           TARGET: ${{ matrix.target }}
-        run: |
-          if [ "${{ matrix.archive_format }}" = "tar.gz" ]; then
-            sha256sum stm-$VERSION-$TARGET.tar.gz > stm-$VERSION-$TARGET.sha256
-          else
-            certutil -hashfile stm-$VERSION-$TARGET.zip SHA256 | findstr /V "certutil" > stm-$VERSION-$TARGET.sha256
-          fi
+        run: certutil -hashfile stm-$VERSION-$TARGET.zip SHA256 | head -2 | tail -1 | tr -d ' ' | awk '{print $1, "stm-'$VERSION'-'$TARGET'.zip"}' > stm-$VERSION-$TARGET.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
