@@ -15,7 +15,11 @@
       "Bash(cargo clippy:*)",
       "Bash(cargo fmt:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(git tag:*)",
+      "Bash(cargo tree:*)",
+      "Bash(bash -c 'source ~/.cargo/env && cargo clippy -- -D warnings 2>&1 && cargo test 2>&1 | tail -20')",
+      "Bash(bash -c 'source ~/.cargo/env && cargo clippy -- -D warnings 2>&1 && cargo test --quiet 2>&1')"
     ]
   }
 }

@@ -4,17 +4,45 @@ A terminal UI for managing SSH tunnels, inspired by VS Code's port forwarding pa
 
 ## Install
 
+### From Binary Release (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/yourusername/stm/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/yourusername/stm/releases/download/v0.1.0/stm-0.1.0-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv stm-0.1.0-aarch64-apple-darwin/stm /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/yourusername/stm/releases/download/v0.1.0/stm-0.1.0-x86_64-apple-darwin.tar.gz | tar xz
+sudo mv stm-0.1.0-x86_64-apple-darwin/stm /usr/local/bin/
+
+# Linux
+curl -L https://github.com/yourusername/stm/releases/download/v0.1.0/stm-0.1.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv stm-0.1.0-x86_64-unknown-linux-gnu/stm /usr/local/bin/
+
+# Windows (PowerShell)
+$release = "0.1.0"
+Invoke-WebRequest https://github.com/yourusername/stm/releases/download/v$release/stm-$release-x86_64-pc-windows-msvc.zip -OutFile stm.zip
+Expand-Archive stm.zip
+Move-Item stm/stm-0.1.0-x86_64-pc-windows-msvc/stm.exe C:\Windows\System32\
+```
+
+### From Cargo
+
 ```bash
 cargo install --path .
 ```
 
-Or build from source:
+### Build from Source
 
 ```bash
 git clone <repo-url> && cd stm
 cargo build --release
 # Binary at target/release/stm
 ```
+
+### Requirements
 
 Requires OpenSSH (`ssh`) on your PATH.
 
@@ -45,10 +73,10 @@ Options:
 
 | Key         | Action                          |
 |-------------|---------------------------------|
-| `j` / `Down`  | Navigate down                |
-| `k` / `Up`    | Navigate up                  |
-| `Enter`        | Connect to selected host     |
-| `Tab`          | Switch panel (Hosts/Tunnels) |
+| `j` / `Down`    | Navigate down                    |
+| `k` / `Up`      | Navigate up                      |
+| `Enter`         | Connect to selected host         |
+| `Tab` / `h`/`l` / `←`/`→` | Switch panel (Hosts/Tunnels) |
 | `/`            | Search hosts                 |
 | `a`            | Add tunnel                   |
 | `Space`        | Toggle tunnel on/off         |

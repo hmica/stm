@@ -139,7 +139,7 @@ fn map_key_to_action(app: &App, modifiers: KeyModifiers, code: KeyCode) -> Optio
         KeyCode::Char('k') | KeyCode::Up => Some(Action::NavigateUp),
         KeyCode::Char('j') | KeyCode::Down => Some(Action::NavigateDown),
         KeyCode::Enter => Some(Action::Select),
-        KeyCode::Tab | KeyCode::BackTab => Some(Action::SwitchPanel),
+        KeyCode::Tab | KeyCode::BackTab | KeyCode::Char('h') | KeyCode::Char('l') | KeyCode::Left | KeyCode::Right => Some(Action::SwitchPanel),
         KeyCode::Char('/') => Some(Action::StartSearch),
         KeyCode::Char('?') => Some(Action::ShowHelp),
         KeyCode::Char('x') => Some(Action::Disconnect),
