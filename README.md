@@ -9,23 +9,28 @@ A terminal UI for managing SSH tunnels, inspired by VS Code's port forwarding pa
 Download the latest release for your platform from [GitHub Releases](https://github.com/hmica/stm/releases):
 
 ```bash
+# Set the version you want to install
+VERSION="0.1.1"
+
 # macOS (Apple Silicon)
-curl -L https://github.com/hmica/stm/releases/download/v0.1.0/stm-0.1.0-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv stm-0.1.0-aarch64-apple-darwin/stm /usr/local/bin/
+curl -L https://github.com/hmica/stm/releases/download/v${VERSION}/stm-${VERSION}-aarch64-apple-darwin.tar.gz | tar xz
+sudo mv stm-${VERSION}-aarch64-apple-darwin/stm /usr/local/bin/
 
 # macOS (Intel)
-curl -L https://github.com/hmica/stm/releases/download/v0.1.0/stm-0.1.0-x86_64-apple-darwin.tar.gz | tar xz
-sudo mv stm-0.1.0-x86_64-apple-darwin/stm /usr/local/bin/
+curl -L https://github.com/hmica/stm/releases/download/v${VERSION}/stm-${VERSION}-x86_64-apple-darwin.tar.gz | tar xz
+sudo mv stm-${VERSION}-x86_64-apple-darwin/stm /usr/local/bin/
 
 # Linux
-curl -L https://github.com/hmica/stm/releases/download/v0.1.0/stm-0.1.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
-sudo mv stm-0.1.0-x86_64-unknown-linux-gnu/stm /usr/local/bin/
+curl -L https://github.com/hmica/stm/releases/download/v${VERSION}/stm-${VERSION}-x86_64-unknown-linux-gnu.tar.gz | tar xz
+sudo mv stm-${VERSION}-x86_64-unknown-linux-gnu/stm /usr/local/bin/
+```
 
-# Windows (PowerShell)
-$release = "0.1.0"
-Invoke-WebRequest https://github.com/hmica/stm/releases/download/v$release/stm-$release-x86_64-pc-windows-msvc.zip -OutFile stm.zip
+**Windows (PowerShell):**
+```powershell
+$version = "0.1.1"
+Invoke-WebRequest https://github.com/hmica/stm/releases/download/v$version/stm-$version-x86_64-pc-windows-msvc.zip -OutFile stm.zip
 Expand-Archive stm.zip
-Move-Item stm/stm-0.1.0-x86_64-pc-windows-msvc/stm.exe C:\Windows\System32\
+Move-Item stm\stm.exe C:\Windows\System32\
 ```
 
 ### From Cargo
