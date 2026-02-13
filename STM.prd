@@ -1,0 +1,457 @@
+# STM — SSH Tunnel Manager
+
+## Product Requirements Document
+
+**Version:** 0.1.0-draft
+**Date:** 2025-02-12
+**Author:** Mica
+
+---
+
+## 1. Vision & Problem Statement
+
+### Le problème
+
+Travailler en remote via SSH implique souvent de forward des ports pour accéder à des services distants (bases de données, dashboards, APIs, etc.). Aujourd'hui, les options sont :
+
+- **Prédéfinir les tunnels dans `~/.ssh/config`** — rigide, nécessite de connaître les ports à l'avance, pas de gestion dynamique.
+- **Lancer manuellement `ssh -L/-R/-D`** — fastidieux, pas de visibilité sur les tunnels actifs, facile d'oublier ou de dupliquer.
+- **VS Code Remote SSH** — excellente UX pour le port forwarding dynamique, mais force à utiliser VS Code comme éditeur.
+
+### La vision
+
+**STM** (SSH Tunnel Manager) est un TUI qui offre l'expérience de port forwarding de VS Code, mais directement dans le terminal, en surcouche à OpenSSH. Il permet de gérer dynamiquement des tunnels SSH sans quitter son workflow terminal.
+
+### Positionnement
+
+Un outil CLI-first pour les développeurs et sysadmins qui travaillent principalement en terminal et veulent une gestion visuelle et interactive de leurs tunnels SSH, sans dépendre d'un IDE.
+
+---
+
+## 2. Utilisateurs cibles
+
+- **Développeurs backend/DevOps** travaillant en remote sur des serveurs via SSH
+- **Sysadmins** gérant plusieurs machines avec des services à exposer localement
+- **Utilisateurs de tmux/terminal-first** qui ne veulent pas dépendre de VS Code pour le port forwarding
+
+---
+
+## 3. Fonctionnalités
+
+### 3.1 Gestion des Hosts SSH
+
+| Fonctionnalité | Détail |
+|---|---|
+| **Parsing de `~/.ssh/config`** | Lecture automatique des hosts définis dans la config SSH de l'utilisateur |
+| **Liste des hosts** | Affichage en TUI avec recherche/filtre fuzzy |
+| **Hosts récents** | Historique des derniers hosts utilisés, triés par dernière utilisation |
+| **Statut de connexion** | Indicateur visuel : connecté / déconnecté / erreur |
+| **Connexion rapide** | Sélection d'un host → établissement de la connexion SSH sous-jacente |
+| **Host ad-hoc** | Possibilité de se connecter à un host non défini dans `~/.ssh/config` (saisie manuelle `user@host`) |
+
+### 3.2 Gestion des Tunnels (Port Forwarding)
+
+| Fonctionnalité | Détail |
+|---|---|
+| **Ajout dynamique** | Ajouter un forward à chaud sur une connexion SSH active, sans la redémarrer |
+| **Types de forward** | Local (`-L`), Remote (`-R`), Dynamic/SOCKS (`-D`) |
+| **Liste des tunnels** | Vue tabulaire : port local, port distant, direction, statut (actif/inactif) |
+| **Activation/désactivation** | Toggle on/off d'un tunnel individuel sans couper la connexion |
+| **Suppression** | Retrait d'un tunnel de la liste |
+| **Historique par host** | Mémorisation des derniers tunnels utilisés par host |
+| **Détection de conflits** | Alerte si un port local est déjà utilisé (par STM ou un autre processus) |
+| **Auto-forward** | Option de re-forward automatique des tunnels précédents à la reconnexion |
+
+### 3.3 Interface TUI
+
+| Composant | Détail |
+|---|---|
+| **Layout principal** | Panel gauche : liste des hosts / Panel droit : tunnels du host sélectionné |
+| **Barre de statut** | Connexion active, nombre de tunnels, erreurs éventuelles |
+| **Raccourcis clavier** | Navigation vim-style (`j/k`, `/` pour recherche, `a` pour ajouter, `d` pour supprimer, `space` pour toggle) |
+| **Modale d'ajout** | Formulaire inline : port local, port distant, direction (L/R/D) |
+| **Notifications** | Feedback visuel lors des actions (tunnel créé, erreur de bind, etc.) |
+| **Thème** | Couleurs configurables, respecte le terminal theme par défaut |
+
+### 3.4 Persistance & Configuration
+
+| Fonctionnalité | Détail |
+|---|---|
+| **Fichier de config** | `~/.config/stm/config.toml` (ou YAML) |
+| **Historique** | `~/.config/stm/history.json` — derniers hosts, derniers tunnels par host |
+| **Tunnels sauvegardés** | Possibilité de sauvegarder des "presets" de tunnels par host |
+| **Auto-restore** | Option pour restaurer automatiquement les tunnels actifs à la reconnexion |
+
+### 3.5 Fonctionnalités avancées (v2+)
+
+| Fonctionnalité | Détail |
+|---|---|
+| **Détection automatique de ports** | Écouter les ports ouverts côté remote (à la VS Code) et proposer le forward |
+| **Multi-host** | Connexions simultanées à plusieurs hosts avec vue agrégée des tunnels |
+| **Partage de config** | Export/import de presets de tunnels |
+| **Health check** | Vérification périodique que les tunnels sont toujours actifs, reconnexion auto |
+| **Intégration tmux** | Status bar tmux avec le nombre de tunnels actifs |
+| **SSH Jump/ProxyJump** | Support des hosts accessibles via bastion/jump host |
+
+---
+
+## 4. Architecture technique
+
+### 4.1 Approche : surcouche à OpenSSH
+
+STM ne ré-implémente pas SSH. Il utilise OpenSSH comme backend via deux mécanismes clés :
+
+#### SSH ControlMaster & ControlPath
+
+```
+# Connexion master gérée par STM
+ssh -M -S ~/.config/stm/sockets/%h-%p -N user@host
+
+# Ajout dynamique d'un tunnel via le socket de contrôle
+ssh -S ~/.config/stm/sockets/%h-%p -O forward -L 5432:localhost:5432 user@host
+
+# Suppression dynamique
+ssh -S ~/.config/stm/sockets/%h-%p -O cancel -L 5432:localhost:5432 user@host
+
+# Vérification du statut
+ssh -S ~/.config/stm/sockets/%h-%p -O check user@host
+```
+
+L'option `-O forward` et `-O cancel` d'OpenSSH permet d'ajouter et retirer des tunnels dynamiquement sur une connexion existante — c'est le mécanisme central de STM.
+
+#### Flux de fonctionnement
+
+```
+┌─────────────────────────────────────────────────┐
+│                    STM TUI                       │
+│                                                  │
+│  ┌──────────────┐    ┌────────────────────────┐  │
+│  │  Host List   │    │   Tunnel List           │  │
+│  │              │    │                          │ │
+│  │ > prod-db  ● │    │  L 5432 → 5432   [ON]  │  │
+│  │   staging  ○ │    │  L 8080 → 80     [OFF] │  │
+│  │   dev      ○ │    │  R 3000 → 3000   [ON]  │  │
+│  │              │    │  D 1080           [ON]  │  │
+│  └──────────────┘    └────────────────────────┘  │
+│                                                  │
+│  [a]dd  [d]elete  [space]toggle  [/]search  [?]help │
+└──────────┬──────────────────────────────────────┘
+           │
+           │  ssh -S socket -O forward/cancel ...
+           ▼
+┌─────────────────────┐
+│  OpenSSH Process     │
+│  (ControlMaster)     │
+│                      │
+│  socket: ~/.config/  │
+│  stm/sockets/%h-%p   │
+└──────────────────────┘
+```
+
+### 4.2 Stack technique
+
+| Composant | Choix | Justification |
+|---|---|---|
+| **Langage** | Rust | Performance, binaire unique, excellente gestion async, écosystème TUI mature |
+| **TUI Framework** | [Ratatui](https://ratatui.rs/) | Le standard Rust pour les TUI, actif, bien documenté |
+| **Async Runtime** | Tokio | Gestion des processus SSH, I/O non-bloquant |
+| **Config parsing** | `toml` crate | Format lisible, standard pour les outils CLI Rust |
+| **SSH config parsing** | `ssh2-config` crate ou parsing custom | Lecture de `~/.ssh/config` |
+| **Serialization** | `serde` + `serde_json` | Historique et état persistant |
+
+### 4.3 Structure du projet
+
+```
+stm/
+├── src/
+│   ├── main.rs              # Entry point, argument parsing
+│   ├── app.rs               # État global de l'application
+│   ├── ui/
+│   │   ├── mod.rs
+│   │   ├── host_list.rs     # Panel des hosts
+│   │   ├── tunnel_list.rs   # Panel des tunnels
+│   │   ├── add_modal.rs     # Modale d'ajout de tunnel
+│   │   ├── status_bar.rs    # Barre de statut
+│   │   └── theme.rs         # Couleurs et styles
+│   ├── ssh/
+│   │   ├── mod.rs
+│   │   ├── config.rs        # Parser ~/.ssh/config
+│   │   ├── connection.rs    # Gestion des connexions ControlMaster
+│   │   └── tunnel.rs        # Opérations forward/cancel
+│   ├── state/
+│   │   ├── mod.rs
+│   │   ├── history.rs       # Historique des hosts et tunnels
+│   │   └── persistence.rs   # Lecture/écriture fichiers config
+│   └── error.rs             # Types d'erreur
+├── Cargo.toml
+├── README.md
+└── config.example.toml
+```
+
+### 4.4 Modèle de données
+
+```rust
+/// Un host SSH tel que défini dans ~/.ssh/config ou saisi manuellement
+struct SshHost {
+    name: String,           // Alias du Host dans ssh config
+    hostname: String,       // Hostname réel
+    user: Option<String>,
+    port: Option<u16>,      // Port SSH (défaut: 22)
+    identity_file: Option<PathBuf>,
+    proxy_jump: Option<String>,
+    last_used: Option<DateTime<Utc>>,
+    use_count: u32,
+}
+
+/// Direction du tunnel
+enum TunnelDirection {
+    Local,    // -L : local_port -> remote_host:remote_port
+    Remote,   // -R : remote_port -> local_host:local_port
+    Dynamic,  // -D : SOCKS proxy sur local_port
+}
+
+/// Un tunnel SSH
+struct Tunnel {
+    id: Uuid,
+    direction: TunnelDirection,
+    local_port: u16,
+    remote_host: String,     // Défaut: "localhost"
+    remote_port: u16,        // Non utilisé pour Dynamic
+    enabled: bool,
+    created_at: DateTime<Utc>,
+}
+
+/// Connexion active à un host
+struct ActiveConnection {
+    host: SshHost,
+    socket_path: PathBuf,
+    tunnels: Vec<Tunnel>,
+    connected_at: DateTime<Utc>,
+    status: ConnectionStatus,
+}
+
+enum ConnectionStatus {
+    Connected,
+    Connecting,
+    Disconnected,
+    Error(String),
+}
+```
+
+---
+
+## 5. User Flows
+
+### 5.1 Connexion et premier forward
+
+```
+1. L'utilisateur lance `stm`
+2. STM parse ~/.ssh/config et affiche la liste des hosts
+   → Les hosts récents sont en haut, marqués avec le timestamp de dernière utilisation
+3. L'utilisateur sélectionne un host (navigation j/k + Enter)
+4. STM établit une connexion ControlMaster en arrière-plan
+   → Indicateur de statut passe de ○ à ● (connecté)
+5. L'utilisateur appuie sur `a` pour ajouter un tunnel
+6. Une modale s'ouvre :
+   - Direction : [L]ocal / [R]emote / [D]ynamic  (défaut: L)
+   - Port local : ____  (auto-suggest basé sur l'historique)
+   - Remote host : localhost  (pré-rempli)
+   - Port distant : ____
+7. L'utilisateur valide → STM exécute `ssh -O forward` sur le socket
+8. Le tunnel apparaît dans la liste avec le statut [ON]
+```
+
+### 5.2 Toggle d'un tunnel
+
+```
+1. L'utilisateur navigue sur un tunnel dans la liste
+2. Appuie sur `space`
+3. Si [ON]  → STM exécute `ssh -O cancel` → passe à [OFF]
+   Si [OFF] → STM exécute `ssh -O forward` → passe à [ON]
+```
+
+### 5.3 Reconnexion avec restore
+
+```
+1. L'utilisateur sélectionne un host précédemment utilisé
+2. STM détecte des tunnels en historique pour cet host
+3. Propose : "Restaurer les tunnels précédents ? [y/N]"
+   ou les restaure automatiquement si auto-restore est activé
+4. Les tunnels sont re-créés sur la nouvelle connexion
+```
+
+---
+
+## 6. Configuration
+
+### `~/.config/stm/config.toml`
+
+```toml
+[general]
+# Chemin du fichier ssh config (défaut: ~/.ssh/config)
+ssh_config_path = "~/.ssh/config"
+
+# Dossier pour les sockets ControlMaster
+socket_dir = "~/.config/stm/sockets"
+
+# Restaurer automatiquement les tunnels à la reconnexion
+auto_restore = false
+
+# Nombre max d'hosts dans l'historique récent
+max_recent_hosts = 20
+
+[ui]
+# Thème: "default", "dark", "light", ou custom
+theme = "default"
+
+# Afficher les hosts non-récents de ssh_config
+show_all_hosts = true
+
+[keybindings]
+# Personnalisation des raccourcis (optionnel)
+# toggle = "space"
+# add = "a"
+# delete = "d"
+# search = "/"
+# quit = "q"
+```
+
+### `~/.config/stm/history.json`
+
+```json
+{
+  "hosts": {
+    "prod-db": {
+      "last_used": "2025-02-12T14:30:00Z",
+      "use_count": 42,
+      "tunnels": [
+        {
+          "direction": "local",
+          "local_port": 5432,
+          "remote_host": "localhost",
+          "remote_port": 5432
+        },
+        {
+          "direction": "local",
+          "local_port": 8080,
+          "remote_host": "localhost",
+          "remote_port": 80
+        }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 7. Raccourcis clavier
+
+| Touche | Action |
+|---|---|
+| `j` / `↓` | Descendre dans la liste |
+| `k` / `↑` | Monter dans la liste |
+| `Enter` | Connecter au host sélectionné / Confirmer |
+| `Space` | Toggle on/off du tunnel sélectionné |
+| `a` | Ajouter un nouveau tunnel |
+| `d` | Supprimer le tunnel sélectionné |
+| `s` | Sauvegarder les tunnels actuels comme preset |
+| `/` | Recherche fuzzy dans la liste courante |
+| `Tab` | Basculer entre le panel hosts et le panel tunnels |
+| `r` | Restaurer les tunnels précédents pour le host connecté |
+| `x` | Déconnecter du host actif |
+| `?` | Afficher l'aide |
+| `q` | Quitter STM (ferme toutes les connexions) |
+| `Esc` | Fermer la modale / annuler |
+
+---
+
+## 8. Gestion des erreurs
+
+| Scénario | Comportement |
+|---|---|
+| **Port local déjà utilisé** | Notification d'erreur avec le PID du processus occupant le port. Proposer un port alternatif. |
+| **Connexion SSH échouée** | Afficher le message d'erreur SSH. Permettre de réessayer. |
+| **Socket ControlMaster perdu** | Détecter la déconnexion, mettre à jour le statut, proposer la reconnexion. |
+| **Permissions insuffisantes** | Ports < 1024 nécessitent sudo — avertir l'utilisateur. |
+| **Host inconnu** | Si le host n'est pas dans `~/.ssh/config`, proposer la saisie manuelle. |
+| **Tunnel zombie** | Health check périodique, nettoyage automatique des tunnels morts. |
+
+---
+
+## 9. Contraintes & décisions techniques
+
+### Pourquoi une surcouche à OpenSSH et pas une lib SSH ?
+
+- **Compatibilité** : utilise la config SSH existante de l'utilisateur (clés, proxies, etc.)
+- **Confiance** : OpenSSH est battle-tested, pas besoin de réimplémenter le protocole
+- **ControlMaster** : mécanisme natif d'OpenSSH pour le multiplexage, le `-O forward`/`cancel` est la feature clé qui rend STM possible
+- **Simplicité** : STM orchestre, OpenSSH exécute
+
+### Pourquoi Rust ?
+
+- Binaire unique, pas de runtime → installation triviale (`cargo install stm`)
+- Ratatui est le framework TUI le plus mature et actif
+- Performance et fiabilité pour un outil qui tourne en arrière-plan
+- Écosystème async (Tokio) idéal pour gérer les processus SSH
+
+### Alternative considérée : Go
+
+Go avec [Bubble Tea](https://github.com/charmbracelet/bubbletea) serait un choix valide aussi. Rust est préféré ici pour l'écosystème Ratatui et la gestion mémoire sans GC, mais Go reste un excellent fallback si l'équipe est plus à l'aise.
+
+---
+
+## 10. MVP (v0.1)
+
+Le scope minimal pour une première version utilisable :
+
+- [ ] Parser `~/.ssh/config` et lister les hosts
+- [ ] Établir une connexion ControlMaster vers un host
+- [ ] Ajouter un tunnel local (`-L`) dynamiquement via `-O forward`
+- [ ] Lister les tunnels actifs
+- [ ] Toggle on/off d'un tunnel via `-O cancel` / `-O forward`
+- [ ] Supprimer un tunnel
+- [ ] Persister l'historique des hosts récents
+- [ ] Persister l'historique des tunnels par host
+- [ ] Navigation clavier de base (j/k, Enter, Space, a, d, q)
+- [ ] Barre de statut avec l'état de la connexion
+
+### Hors-scope MVP
+
+- Tunnels Remote (`-R`) et Dynamic (`-D`) → v0.2
+- Auto-detect des ports ouverts côté remote → v2
+- Multi-host simultané → v2
+- Presets de tunnels → v0.3
+- Health check automatique → v0.3
+- Intégration tmux → v2
+
+---
+
+## 11. Métriques de succès
+
+| Métrique | Objectif |
+|---|---|
+| Temps pour ajouter un tunnel | < 5 secondes (vs ~15s en CLI manuel) |
+| Temps de démarrage du TUI | < 200ms |
+| Fiabilité des tunnels | Parité avec l'usage direct d'OpenSSH |
+| Adoption personnelle | Remplace complètement les commandes `ssh -L` manuelles |
+
+---
+
+## 12. Risques & mitigations
+
+| Risque | Impact | Mitigation |
+|---|---|---|
+| Formats variés de `~/.ssh/config` | Parsing incomplet | Utiliser une crate éprouvée + tests sur des configs réelles |
+| ControlMaster non supporté partout | Feature non fonctionnelle | Vérifier le support au démarrage, fallback gracieux |
+| Processus SSH orphelins | Tunnels zombies | Cleanup systématique au quit, PID tracking, health checks |
+| Conflit avec ControlMaster existant | Collision de sockets | Utiliser un socket_dir dédié à STM |
+
+---
+
+## 13. Inspirations & références
+
+- **VS Code Remote SSH** — Port forwarding UX (auto-detect, toggle, liste)
+- **[ssht](https://github.com/quantumsheep/sshs)** — TUI pour la sélection d'hosts SSH
+- **lazydocker / lazygit** — Référence pour l'UX TUI en terminal
+- **OpenSSH ControlMaster** — [documentation](https://man.openbsd.org/ssh#O)

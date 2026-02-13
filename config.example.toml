@@ -1,0 +1,19 @@
+# STM (SSH Tunnel Manager) configuration
+# Copy to ~/.config/stm/config.toml
+
+[general]
+# Path to SSH config file (default: ~/.ssh/config)
+# ssh_config_path = "/home/user/.ssh/config"
+
+# Directory for ControlMaster sockets (default: ~/.config/stm/sockets)
+# socket_dir = "/home/user/.config/stm/sockets"
+
+# Automatically restore previous tunnels on reconnect
+auto_restore = false
+
+# Maximum number of recent hosts to track
+max_recent_hosts = 10
+
+[ui]
+# Show all hosts from SSH config (vs only recently used)
+show_all_hosts = true
