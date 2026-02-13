@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "SSH Tunnel Manager - VS Code-like SSH port forwarding in the terminal"
 license = "MIT"
-repository = "https://github.com/yourusername/stm"
+repository = "https://github.com/hmica/stm"
 
 [dependencies]
 ratatui = "0.30"
