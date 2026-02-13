@@ -130,7 +130,12 @@ mod tests {
     fn test_recent_hosts_ordering() {
         let mut history = History::default();
         history.record_connection("old");
-        // small delay to ensure ordering
+
+        // Manually set timestamps to ensure proper ordering (avoid same-millisecond collisions)
+        if let Some(old_entry) = history.hosts.get_mut("old") {
+            old_entry.last_used = Utc::now() - chrono::Duration::seconds(1);
+        }
+
         history.record_connection("new");
 
         let recent = history.recent_hosts();
